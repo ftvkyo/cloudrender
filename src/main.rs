@@ -5,6 +5,23 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Result};
 use glow::HasContext;
 
+type Point = [f32; 3];
+
+fn points_to_triangles(points: &Vec<Point>) -> Vec<Point> {
+    let mut triangles = Vec::with_capacity(points.len() * 6);
+    for point in points {
+        let a = [point[0] - 0.1, point[1] - 0.1, point[2]];
+        let b = [point[0] + 0.1, point[1] - 0.1, point[2]];
+        let c = [point[0] + 0.1, point[1] + 0.1, point[2]];
+        let d = [point[0] - 0.1, point[1] + 0.1, point[2]];
+        triangles.extend_from_slice(&[
+            a, b, c,
+            c, d, a,
+        ]);
+    }
+    triangles
+}
+
 pub fn main() -> Result<()> {
     let AppCtx { gl, win, mut ev, gl_ctx: _gl_ctx } = init()?;
 
@@ -18,19 +35,13 @@ pub fn main() -> Result<()> {
     let frames_per_second = 60;
     let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
 
-    let mut vertices = [
-        [0.5f32, 1.0f32],
-        [0.0f32, 0.0f32],
-        [1.0f32, 0.0f32],
+    let points = vec![
+        [0.0, 0.0, 0.0],
+        [0.5, 0.0, 0.0],
+        [0.0, 0.5, 0.0],
     ];
 
-    update_vertex_buffer(&gl, &vbo, &vertices)?;
-
-    let mut blue = -1.0;
-
     'quit: loop {
-        set_uniform(&gl, program, "blue", blue);
-
         {
             use sdl3::event::Event;
             use sdl3::keyboard::Keycode;
@@ -44,20 +55,12 @@ pub fn main() -> Result<()> {
 
         let instant_start = Instant::now();
 
+        let triangles = points_to_triangles(&points);
+        update_vertex_buffer(&gl, &vbo, &triangles)?;
+
         unsafe { gl.clear(glow::COLOR_BUFFER_BIT) };
-        unsafe { gl.draw_arrays(glow::TRIANGLES, 0, vertices.len() as i32) };
+        unsafe { gl.draw_arrays(glow::TRIANGLES, 0, triangles.len() as i32) };
         win.gl_swap_window();
-
-        blue += 0.01;
-        if blue > 1.0 {
-            blue = -1.0;
-        }
-
-        vertices[0][0] += 0.01;
-        if vertices[0][0] > 1.0 {
-            vertices[0][0] = 0.0;
-        }
-        update_vertex_buffer(&gl, &vbo, &vertices)?;
 
         let instant_end = Instant::now();
         let duration_rendering = instant_end - instant_start;
@@ -178,12 +181,12 @@ fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow:
     };
     unsafe { gl.bind_vertex_array(Some(vao)) };
     unsafe { gl.enable_vertex_attrib_array(0) };
-    unsafe { gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0) };
+    unsafe { gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, size_of::<Point>() as i32, 0) };
 
     Ok((vbo, vao))
 }
 
-fn update_vertex_buffer(gl: &glow::Context, vbo: &glow::NativeBuffer, vertices: &[[f32; 2]]) -> Result<()> {
+fn update_vertex_buffer(gl: &glow::Context, vbo: &glow::NativeBuffer, vertices: &[[f32; 3]]) -> Result<()> {
     let vertices_u8: Vec<u8> = vertices.iter().flat_map(|v| {
         v.iter().flat_map(|c| c.to_ne_bytes())
     }).collect();
