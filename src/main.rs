@@ -13,14 +13,16 @@ pub fn main() -> Result<()> {
 
     let (vbo, vao) = create_vertex_buffer(&gl)?;
 
-    set_uniform(&gl, program, "blue", 0.8);
-
-    unsafe { gl.clear_color(0.1, 0.2, 0.3, 1.0) };
+    unsafe { gl.clear_color(0.0, 0.0, 0.0, 1.0) };
 
     let frames_per_second = 60;
     let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
 
+    let mut blue = -1.0;
+
     'quit: loop {
+        set_uniform(&gl, program, "blue", blue);
+
         {
             use sdl3::event::Event;
             use sdl3::keyboard::Keycode;
@@ -37,6 +39,11 @@ pub fn main() -> Result<()> {
         unsafe { gl.clear(glow::COLOR_BUFFER_BIT) };
         unsafe { gl.draw_arrays(glow::TRIANGLES, 0, 3) };
         win.gl_swap_window();
+
+        blue += 0.01;
+        if blue > 1.0 {
+            blue = -1.0;
+        }
 
         let instant_end = Instant::now();
         let duration_rendering = instant_end - instant_start;
