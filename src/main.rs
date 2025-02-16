@@ -144,12 +144,15 @@ fn create_program(gl: &glow::Context) -> Result<glow::NativeProgram> {
 }
 
 fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow::NativeVertexArray)> {
-    // This is a flat array of f32s that are to be interpreted as vec2s.
-    let triangle_vertices = [0.5f32, 1.0f32, 0.0f32, 0.0f32, 1.0f32, 0.0f32];
-    let triangle_vertices_u8: &[u8] = unsafe { core::slice::from_raw_parts(
-        triangle_vertices.as_ptr() as *const u8,
-        triangle_vertices.len() * core::mem::size_of::<f32>(),
-    ) };
+    let vertices = [
+        [0.5f32, 1.0f32],
+        [0.0f32, 0.0f32],
+        [1.0f32, 0.0f32],
+    ];
+
+    let vertices_u8: Vec<u8> = vertices.iter().flat_map(|v| {
+        v.iter().flat_map(|c| c.to_ne_bytes())
+    }).collect();
 
     // We construct a buffer and upload the data
     let vbo = match unsafe { gl.create_buffer() } {
@@ -157,7 +160,7 @@ fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow:
         Err(e) => bail!("Could not create a buffer: {}", e),
     };
     unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo)) };
-    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, triangle_vertices_u8, glow::STATIC_DRAW) };
+    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8.as_slice(), glow::STATIC_DRAW) };
 
     // We now construct a vertex array to describe the format of the input buffer
     let vao = match unsafe { gl.create_vertex_array() } {
