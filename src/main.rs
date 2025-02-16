@@ -1,46 +1,178 @@
-use std::time::Duration;
+use std::ffi::c_void;
+use std::ptr;
+use std::time::{Duration, Instant};
 
-use anyhow::Result;
-
-use sdl3::event::Event;
-use sdl3::keyboard::Keycode;
-use sdl3::pixels::Color;
+use anyhow::{bail, Result};
+use glow::HasContext;
 
 pub fn main() -> Result<()> {
-    let sdl_context = sdl3::init()?;
-    let video_subsystem = sdl_context.video()?;
+    let AppCtx { gl, win, mut ev, gl_ctx: _gl_ctx } = init()?;
 
-    let window = video_subsystem
-        .window("rust-sdl3 demo", 800, 600)
-        .position_centered()
-        .build()?;
+    let program = create_program(&gl)?;
+    unsafe { gl.use_program(Some(program)) };
 
-    let mut canvas = window.into_canvas();
+    let (vbo, vao) = create_vertex_buffer(&gl)?;
 
-    canvas.set_draw_color(Color::RGB(0, 255, 255));
-    canvas.clear();
-    canvas.present();
-    let mut event_pump = sdl_context.event_pump()?;
-    let mut i = 0;
-    'running: loop {
-        i = (i + 1) % 255;
-        canvas.set_draw_color(Color::RGB(i, 64, 255 - i));
-        canvas.clear();
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
+    set_uniform(&gl, program, "blue", 0.8);
+
+    unsafe { gl.clear_color(0.1, 0.2, 0.3, 1.0) };
+
+    let frames_per_second = 60;
+    let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
+
+    'quit: loop {
+        {
+            use sdl3::event::Event;
+            use sdl3::keyboard::Keycode;
+
+            for event in ev.poll_iter() {
+                if let Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } = event {
+                    break 'quit;
+                }
             }
         }
-        // The rest of the game loop goes here...
 
-        canvas.present();
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        let instant_start = Instant::now();
+
+        unsafe { gl.clear(glow::COLOR_BUFFER_BIT) };
+        unsafe { gl.draw_arrays(glow::TRIANGLES, 0, 3) };
+        win.gl_swap_window();
+
+        let instant_end = Instant::now();
+        let duration_rendering = instant_end - instant_start;
+        let duration_to_sleep = frame_duration.saturating_sub(duration_rendering);
+
+        ::std::thread::sleep(duration_to_sleep);
     }
 
+    unsafe { gl.delete_program(program) };
+    unsafe { gl.delete_vertex_array(vao) };
+    unsafe { gl.delete_buffer(vbo) };
+
     Ok(())
+}
+
+struct AppCtx {
+    pub gl: glow::Context,
+    pub gl_ctx: sdl3::video::GLContext,
+    pub win: sdl3::video::Window,
+    pub ev: sdl3::EventPump,
+}
+
+
+fn init() -> Result<AppCtx> {
+    let sdl = sdl3::init()?;
+    let video = sdl.video()?;
+
+    let gl_attr = video.gl_attr();
+    gl_attr.set_context_profile(sdl3::video::GLProfile::Core);
+    gl_attr.set_context_version(3, 3);
+    gl_attr.set_context_flags().forward_compatible().set();
+
+    let win = video
+        .window("rust-sdl3 demo", 800, 600)
+        .position_centered()
+        .opengl()
+        .build()?;
+
+    // This needs to be created before function loading.
+    // This should only be dropped after we are done with any GL.
+    let gl_ctx = win.gl_create_context()?;
+
+    let gl_loader = |s: &str| match video.gl_get_proc_address(s) {
+        Some(f) => f as *const c_void,
+        None => ptr::null(),
+    };
+
+    let gl = unsafe {
+        glow::Context::from_loader_function(gl_loader)
+    };
+
+    let ev = sdl.event_pump()?;
+
+    Ok(AppCtx {
+        gl,
+        gl_ctx,
+        win,
+        ev,
+    })
+}
+
+const SHADER_VERTEX: &'_ str = include_str!("shader/vertex.glsl");
+const SHADER_FRAGMENT: &'_ str = include_str!("shader/fragment.glsl");
+
+fn create_program(gl: &glow::Context) -> Result<glow::NativeProgram> {
+    let program = match unsafe { gl.create_program() } {
+        Ok(program) => program,
+        Err(e) => bail!("Could not create a program: {}", e),
+    };
+
+    let sources = [
+        (glow::VERTEX_SHADER, SHADER_VERTEX),
+        (glow::FRAGMENT_SHADER, SHADER_FRAGMENT),
+    ];
+
+    let mut shaders = Vec::with_capacity(sources.len());
+
+    for (shader_type, shader_source) in sources {
+        let shader = match unsafe { gl.create_shader(shader_type) } {
+            Ok(shader) => shader,
+            Err(e) => bail!("Could not create a shader: {}", e),
+        };
+
+        unsafe { gl.shader_source(shader, shader_source) };
+        unsafe { gl.compile_shader(shader); }
+        if ! unsafe { gl.get_shader_compile_status(shader) } {
+            bail!("Failed to build the '{}' shader: {}", shader_type, unsafe { gl.get_shader_info_log(shader) });
+        }
+        unsafe { gl.attach_shader(program, shader) };
+
+        shaders.push(shader);
+    }
+
+    unsafe { gl.link_program(program) };
+    if ! unsafe { gl.get_program_link_status(program) } {
+        bail!("{}", unsafe { gl.get_program_info_log(program) });
+    }
+
+    for shader in shaders {
+        unsafe { gl.detach_shader(program, shader) };
+        unsafe { gl.delete_shader(shader) };
+    }
+
+    Ok(program)
+}
+
+fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow::NativeVertexArray)> {
+    // This is a flat array of f32s that are to be interpreted as vec2s.
+    let triangle_vertices = [0.5f32, 1.0f32, 0.0f32, 0.0f32, 1.0f32, 0.0f32];
+    let triangle_vertices_u8: &[u8] = unsafe { core::slice::from_raw_parts(
+        triangle_vertices.as_ptr() as *const u8,
+        triangle_vertices.len() * core::mem::size_of::<f32>(),
+    ) };
+
+    // We construct a buffer and upload the data
+    let vbo = match unsafe { gl.create_buffer() } {
+        Ok(buffer) => buffer,
+        Err(e) => bail!("Could not create a buffer: {}", e),
+    };
+    unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo)) };
+    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, triangle_vertices_u8, glow::STATIC_DRAW) };
+
+    // We now construct a vertex array to describe the format of the input buffer
+    let vao = match unsafe { gl.create_vertex_array() } {
+        Ok(buffer) => buffer,
+        Err(e) => bail!("Could not create a vertex array: {}", e),
+    };
+    unsafe { gl.bind_vertex_array(Some(vao)) };
+    unsafe { gl.enable_vertex_attrib_array(0) };
+    unsafe { gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0) };
+
+    Ok((vbo, vao))
+}
+
+fn set_uniform(gl: &glow::Context, program: glow::NativeProgram, name: &str, value: f32) {
+    let uniform_location = unsafe { gl.get_uniform_location(program, name) };
+    // See also `uniform_n_i32`, `uniform_n_u32`, `uniform_matrix_4_f32_slice` etc.
+    unsafe { gl.uniform_1_f32(uniform_location.as_ref(), value) }
 }

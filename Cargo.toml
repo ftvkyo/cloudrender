@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.95"
+glow = { version = "0.16.0", default-features = false }
 sdl3 = { version = "0", features = [] }
