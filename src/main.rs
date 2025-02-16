@@ -18,6 +18,14 @@ pub fn main() -> Result<()> {
     let frames_per_second = 60;
     let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
 
+    let mut vertices = [
+        [0.5f32, 1.0f32],
+        [0.0f32, 0.0f32],
+        [1.0f32, 0.0f32],
+    ];
+
+    update_vertex_buffer(&gl, &vbo, &vertices)?;
+
     let mut blue = -1.0;
 
     'quit: loop {
@@ -37,13 +45,19 @@ pub fn main() -> Result<()> {
         let instant_start = Instant::now();
 
         unsafe { gl.clear(glow::COLOR_BUFFER_BIT) };
-        unsafe { gl.draw_arrays(glow::TRIANGLES, 0, 3) };
+        unsafe { gl.draw_arrays(glow::TRIANGLES, 0, vertices.len() as i32) };
         win.gl_swap_window();
 
         blue += 0.01;
         if blue > 1.0 {
             blue = -1.0;
         }
+
+        vertices[0][0] += 0.01;
+        if vertices[0][0] > 1.0 {
+            vertices[0][0] = 0.0;
+        }
+        update_vertex_buffer(&gl, &vbo, &vertices)?;
 
         let instant_end = Instant::now();
         let duration_rendering = instant_end - instant_start;
@@ -151,25 +165,13 @@ fn create_program(gl: &glow::Context) -> Result<glow::NativeProgram> {
 }
 
 fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow::NativeVertexArray)> {
-    let vertices = [
-        [0.5f32, 1.0f32],
-        [0.0f32, 0.0f32],
-        [1.0f32, 0.0f32],
-    ];
-
-    let vertices_u8: Vec<u8> = vertices.iter().flat_map(|v| {
-        v.iter().flat_map(|c| c.to_ne_bytes())
-    }).collect();
-
-    // We construct a buffer and upload the data
     let vbo = match unsafe { gl.create_buffer() } {
         Ok(buffer) => buffer,
         Err(e) => bail!("Could not create a buffer: {}", e),
     };
     unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo)) };
-    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8.as_slice(), glow::STATIC_DRAW) };
 
-    // We now construct a vertex array to describe the format of the input buffer
+    // Describe the format of the input buffer
     let vao = match unsafe { gl.create_vertex_array() } {
         Ok(buffer) => buffer,
         Err(e) => bail!("Could not create a vertex array: {}", e),
@@ -179,6 +181,16 @@ fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow:
     unsafe { gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0) };
 
     Ok((vbo, vao))
+}
+
+fn update_vertex_buffer(gl: &glow::Context, vbo: &glow::NativeBuffer, vertices: &[[f32; 2]]) -> Result<()> {
+    let vertices_u8: Vec<u8> = vertices.iter().flat_map(|v| {
+        v.iter().flat_map(|c| c.to_ne_bytes())
+    }).collect();
+
+    unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(*vbo)) };
+    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8.as_slice(), glow::DYNAMIC_DRAW) };
+    Ok(())
 }
 
 fn set_uniform(gl: &glow::Context, program: glow::NativeProgram, name: &str, value: f32) {
