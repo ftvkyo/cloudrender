@@ -2,7 +2,7 @@ use std::ffi::c_void;
 use std::ptr;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use glow::HasContext;
 
 type Point = [f32; 3];
@@ -130,9 +130,14 @@ fn create_program(gl: &glow::Context) -> Result<glow::NativeProgram> {
 
         unsafe { gl.shader_source(shader, shader_source) };
         unsafe { gl.compile_shader(shader); }
-        if ! unsafe { gl.get_shader_compile_status(shader) } {
-            bail!("Failed to build the '{}' shader: {}", shader_type, unsafe { gl.get_shader_info_log(shader) });
+
+        let success = unsafe { gl.get_shader_compile_status(shader) };
+        if !success || cfg!(debug_assertions) {
+            let log = unsafe { gl.get_shader_info_log(shader) };
+            println!("Shader '{}' info log:\n{}", shader_type, log);
         }
+        ensure!(success, "Failed to build the '{}' shader", shader_type);
+
         unsafe { gl.attach_shader(program, shader) };
 
         shaders.push(shader);
