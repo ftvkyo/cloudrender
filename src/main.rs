@@ -2,7 +2,7 @@ use std::ffi::c_void;
 use std::ptr;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use glow::HasContext;
 
 type Point = [f32; 3];
@@ -28,7 +28,7 @@ pub fn main() -> Result<()> {
     let program = create_program(&gl)?;
     unsafe { gl.use_program(Some(program)) };
 
-    let (vbo, vao) = create_vertex_buffer(&gl)?;
+    let (vbo, vao) = create_buffers(&gl, program)?;
 
     unsafe { gl.clear_color(0.0, 0.0, 0.0, 1.0) };
 
@@ -167,7 +167,10 @@ fn create_program(gl: &glow::Context) -> Result<glow::NativeProgram> {
     Ok(program)
 }
 
-fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow::NativeVertexArray)> {
+fn create_buffers(gl: &glow::Context, program: glow::Program) -> Result<(glow::NativeBuffer, glow::NativeVertexArray)> {
+    let position_attrib_index = unsafe { gl.get_attrib_location(program, "position") }
+        .context("Could not get 'position' attrib location")?;
+
     let vbo = match unsafe { gl.create_buffer() } {
         Ok(buffer) => buffer,
         Err(e) => bail!("Could not create a buffer: {}", e),
@@ -180,8 +183,8 @@ fn create_vertex_buffer(gl: &glow::Context) -> Result<(glow::NativeBuffer, glow:
         Err(e) => bail!("Could not create a vertex array: {}", e),
     };
     unsafe { gl.bind_vertex_array(Some(vao)) };
-    unsafe { gl.enable_vertex_attrib_array(0) };
-    unsafe { gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, size_of::<Point>() as i32, 0) };
+    unsafe { gl.enable_vertex_attrib_array(position_attrib_index) };
+    unsafe { gl.vertex_attrib_pointer_f32(position_attrib_index, 3, glow::FLOAT, false, size_of::<Point>() as i32, 0) };
 
     Ok((vbo, vao))
 }
