@@ -1,7 +1,8 @@
 use anyhow::{bail, ensure, Context, Result};
+use cgmath::{Matrix, Matrix4};
 use glow::HasContext;
 
-use crate::{Position, TexCoord};
+use crate::{camera::AppCamera, Position, TexCoord};
 
 const SHADER_VERTEX: &'_ str = include_str!("shader/vertex.glsl");
 const SHADER_FRAGMENT: &'_ str = include_str!("shader/fragment.glsl");
@@ -167,7 +168,7 @@ fn create_program(gl: &glow::Context) -> Result<glow::Program> {
 }
 
 pub struct App {
-    #[allow(dead_code)] // Even if not accessed,
+    #[allow(dead_code)] // Even if not accessed, this needs to outlive all GL operations
     gl_ctx: sdl3::video::GLContext,
     window: sdl3::video::Window,
     event_pump: sdl3::EventPump,
@@ -179,7 +180,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn init() -> Result<Self> {
+    pub fn init(w: u32, h: u32) -> Result<Self> {
         let sdl = sdl3::init()?;
         let video = sdl.video()?;
 
@@ -189,7 +190,7 @@ impl App {
         gl_attr.set_context_flags().forward_compatible().set();
 
         let window = video
-            .window("rust-sdl3 demo", 800, 600)
+            .window("rust-sdl3 demo", w, h)
             .position_centered()
             .opengl()
             .build()?;
@@ -227,6 +228,52 @@ impl App {
 
     pub fn poll_iter(&mut self) -> sdl3::event::EventPollIterator {
         self.event_pump.poll_iter()
+    }
+
+    pub fn update_uniforms(&self, model: &Matrix4<f32>, camera: &AppCamera) -> Result<()> {
+        let get_uniform_location = |name: &str| {
+            unsafe { self.gl.get_uniform_location(self.program, name) }
+        };
+
+        let model_f32 = unsafe { core::slice::from_raw_parts(
+            model.as_ptr(),
+            size_of_val(model) / size_of_val(&model.x.x),
+        ) };
+
+        let model_uniform_location = get_uniform_location("model");
+        unsafe { self.gl.uniform_matrix_4_f32_slice(
+            model_uniform_location.as_ref(),
+            false,
+            model_f32,
+        ) };
+
+        let view = camera.view();
+        let view_f32 = unsafe { core::slice::from_raw_parts(
+            view.as_ptr(),
+            size_of_val(&view) / size_of_val(&view.x.x),
+        ) };
+
+        let view_uniform_location = get_uniform_location("view");
+        unsafe { self.gl.uniform_matrix_4_f32_slice(
+            view_uniform_location.as_ref(),
+            false,
+            view_f32,
+        ) };
+
+        let projection = camera.projection();
+        let projection_f32 = unsafe { core::slice::from_raw_parts(
+            projection.as_ptr(),
+            size_of_val(&projection) / size_of_val(&projection.x.x),
+        ) };
+
+        let projection_uniform_location = get_uniform_location("projection");
+        unsafe { self.gl.uniform_matrix_4_f32_slice(
+            projection_uniform_location.as_ref(),
+            false,
+            projection_f32,
+        ) };
+
+        Ok(())
     }
 
     pub fn render_frame(&self, points: &Vec<Position>) -> Result<()> {
