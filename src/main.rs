@@ -1,12 +1,14 @@
+use core::slice;
 use std::ffi::c_void;
 use std::ptr;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, ensure, Context, Result};
+use cgmath::{Point2, Point3};
 use glow::HasContext;
 
-type Point = [f32; 3];
-type TexCoord = [f32; 2];
+type Position = Point3<f32>;
+type TexCoord = Point2<f32>;
 
 pub fn main() -> Result<()> {
     let AppCtx { gl, win, mut ev, gl_ctx: _gl_ctx } = init()?;
@@ -22,9 +24,9 @@ pub fn main() -> Result<()> {
     let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
 
     let points = vec![
-        [0.0, 0.0, 0.0],
-        [0.5, 0.0, 0.0],
-        [0.0, 0.5, 0.0],
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(0.5, 0.0, 0.0),
+        Point3::new(0.0, 0.5, 0.0),
     ];
 
     'quit: loop {
@@ -186,10 +188,10 @@ fn create_buffers(gl: &glow::Context, program: glow::Program) -> Result<Buffers>
     unsafe { gl.enable_vertex_attrib_array(position_attrib_index) };
     unsafe { gl.vertex_attrib_pointer_f32(
         position_attrib_index,
-        (size_of::<Point>() / size_of::<f32>()) as i32,
+        (size_of::<Position>() / size_of::<f32>()) as i32,
         glow::FLOAT,
         false,
-        size_of::<Point>() as i32,
+        size_of::<Position>() as i32,
         0, // Offset into the currently bound buffer
     ) };
 
@@ -212,17 +214,17 @@ fn create_buffers(gl: &glow::Context, program: glow::Program) -> Result<Buffers>
     })
 }
 
-fn update_buffers(gl: &glow::Context, buffers: &Buffers, points: &Vec<Point>) -> Result<i32> {
+fn update_buffers(gl: &glow::Context, buffers: &Buffers, points: &Vec<Position>) -> Result<i32> {
     let vertices = points.len() * 6;
 
-    let mut positions: Vec<Point> = Vec::with_capacity(vertices);
+    let mut positions: Vec<Position> = Vec::with_capacity(vertices);
     let mut texcoords: Vec<TexCoord> = Vec::with_capacity(vertices);
 
     for point in points {
-        let a = [point[0] - 0.1, point[1] - 0.1, point[2]];
-        let b = [point[0] + 0.1, point[1] - 0.1, point[2]];
-        let c = [point[0] + 0.1, point[1] + 0.1, point[2]];
-        let d = [point[0] - 0.1, point[1] + 0.1, point[2]];
+        let a = Position::new(point[0] - 0.1, point[1] - 0.1, point[2]);
+        let b = Position::new(point[0] + 0.1, point[1] - 0.1, point[2]);
+        let c = Position::new(point[0] + 0.1, point[1] + 0.1, point[2]);
+        let d = Position::new(point[0] - 0.1, point[1] + 0.1, point[2]);
 
         positions.extend_from_slice(&[
             a, b, c,
@@ -230,26 +232,28 @@ fn update_buffers(gl: &glow::Context, buffers: &Buffers, points: &Vec<Point>) ->
         ]);
 
         texcoords.extend_from_slice(&[
-            [-1.0, -1.0], [1.0, -1.0], [1.0, 1.0],
-            [1.0, 1.0], [-1.0, 1.0], [-1.0, -1.0],
+            TexCoord::new(-1.0, -1.0), TexCoord::new(1.0, -1.0), TexCoord::new(1.0, 1.0),
+            TexCoord::new(1.0, 1.0), TexCoord::new(-1.0, 1.0), TexCoord::new(-1.0, -1.0),
         ]);
     }
 
-    let positions_u8: Vec<u8> = positions.iter().flat_map(|v| {
-        v.iter().flat_map(|c| c.to_ne_bytes())
-    }).collect();
+    let positions_u8: &[u8] = unsafe { slice::from_raw_parts(
+        positions.as_ptr() as *const u8,
+        size_of::<Position>() * vertices)
+    };
 
     unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffers.positions)) };
-    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, positions_u8.as_slice(), glow::DYNAMIC_DRAW) };
+    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, positions_u8, glow::DYNAMIC_DRAW) };
 
-    let texcoords_u8: Vec<u8> = texcoords.iter().flat_map(|v| {
-        v.iter().flat_map(|c| c.to_ne_bytes())
-    }).collect();
+    let texcoords_u8: &[u8] = unsafe { slice::from_raw_parts(
+        texcoords.as_ptr() as *const u8,
+        size_of::<TexCoord>() * vertices)
+    };
 
     unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffers.texcoords)) };
-    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, texcoords_u8.as_slice(), glow::DYNAMIC_DRAW) };
+    unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, texcoords_u8, glow::DYNAMIC_DRAW) };
 
-    Ok(positions.len() as i32)
+    Ok(vertices as i32)
 }
 
 fn delete_buffers(gl: &glow::Context, buffers: Buffers) {
