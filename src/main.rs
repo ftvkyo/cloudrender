@@ -15,16 +15,16 @@ pub mod camera;
 pub mod cloud;
 
 pub fn main() -> Result<()> {
-    let w = 800;
-    let h = 600;
-    let aspect = 800 as f32 / 600 as f32;
+    let w = 1600;
+    let h = 1200;
+    let aspect = w as f32 / h as f32;
 
     let mut app = App::init(w, h)?;
 
     let frames_per_second = 60;
     let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
 
-    let cloud = Cloud::<20>::new();
+    let mut cloud = Cloud::<20>::new();
 
     let camera = AppCamera::new(aspect);
     let model = Matrix4::<f32>::identity();
@@ -56,6 +56,8 @@ pub fn main() -> Result<()> {
         let duration_to_sleep = frame_duration.saturating_sub(duration_rendering);
 
         ::std::thread::sleep(duration_to_sleep);
+
+        cloud.step(1.0 / frames_per_second as f32);
     }
 
     Ok(())
