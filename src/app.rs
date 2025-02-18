@@ -234,47 +234,49 @@ impl App {
     }
 
     pub fn update_uniforms(&self, model: &Matrix4<f32>, camera: &AppCamera) -> Result<()> {
-        let get_uniform_location = |name: &str| {
-            unsafe { self.gl.get_uniform_location(self.program, name) }
+        let get_uniform_location =
+            |name: &str| unsafe { self.gl.get_uniform_location(self.program, name) };
+
+        let model_f32 = unsafe {
+            core::slice::from_raw_parts(
+                model.as_ptr(),
+                size_of_val(model) / size_of_val(&model.x.x),
+            )
         };
 
-        let model_f32 = unsafe { core::slice::from_raw_parts(
-            model.as_ptr(),
-            size_of_val(model) / size_of_val(&model.x.x),
-        ) };
-
         let model_uniform_location = get_uniform_location("model");
-        unsafe { self.gl.uniform_matrix_4_f32_slice(
-            model_uniform_location.as_ref(),
-            false,
-            model_f32,
-        ) };
+        unsafe {
+            self.gl
+                .uniform_matrix_4_f32_slice(model_uniform_location.as_ref(), false, model_f32)
+        };
 
         let view = camera.view();
-        let view_f32 = unsafe { core::slice::from_raw_parts(
-            view.as_ptr(),
-            size_of_val(&view) / size_of_val(&view.x.x),
-        ) };
+        let view_f32 = unsafe {
+            core::slice::from_raw_parts(view.as_ptr(), size_of_val(&view) / size_of_val(&view.x.x))
+        };
 
         let view_uniform_location = get_uniform_location("view");
-        unsafe { self.gl.uniform_matrix_4_f32_slice(
-            view_uniform_location.as_ref(),
-            false,
-            view_f32,
-        ) };
+        unsafe {
+            self.gl
+                .uniform_matrix_4_f32_slice(view_uniform_location.as_ref(), false, view_f32)
+        };
 
         let projection = camera.projection();
-        let projection_f32 = unsafe { core::slice::from_raw_parts(
-            projection.as_ptr(),
-            size_of_val(&projection) / size_of_val(&projection.x.x),
-        ) };
+        let projection_f32 = unsafe {
+            core::slice::from_raw_parts(
+                projection.as_ptr(),
+                size_of_val(&projection) / size_of_val(&projection.x.x),
+            )
+        };
 
         let projection_uniform_location = get_uniform_location("projection");
-        unsafe { self.gl.uniform_matrix_4_f32_slice(
-            projection_uniform_location.as_ref(),
-            false,
-            projection_f32,
-        ) };
+        unsafe {
+            self.gl.uniform_matrix_4_f32_slice(
+                projection_uniform_location.as_ref(),
+                false,
+                projection_f32,
+            )
+        };
 
         Ok(())
     }

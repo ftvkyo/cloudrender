@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use cgmath::{Matrix4, Point2, Point3, SquareMatrix, Vector3};
 use cloud::Cloud;
+use rand::Rng;
 
 use crate::{app::App, camera::AppCamera};
 
@@ -42,6 +43,14 @@ pub fn main() -> Result<()> {
                 } = event
                 {
                     break 'quit;
+                }
+
+                if let Event::KeyDown {
+                    keycode: Some(Keycode::Space),
+                    ..
+                } = event
+                {
+                    cloud.poke();
                 }
             }
         }

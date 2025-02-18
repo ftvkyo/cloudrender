@@ -19,11 +19,27 @@ impl<const C: usize> Cloud<C> {
             point.z = rng.random_range(-1.0..=1.0);
         }
 
-        points.sort_by(|a, b| a.z.partial_cmp(&b.z).unwrap());
+        let mut s = Self { points };
 
-        Self {
-            points
-        }
+        s.sort();
+
+        s
+    }
+
+    pub fn poke(&mut self) {
+        let mut rng = rand::rng();
+
+        let i = rng.random_range(0..self.points.len());
+
+        self.points[i].x = rng.random_range(-1.0..=1.0);
+        self.points[i].y = rng.random_range(-1.0..=1.0);
+        self.points[i].z = rng.random_range(-1.0..=1.0);
+
+        self.sort();
+    }
+
+    fn sort(&mut self) {
+        self.points.sort_by(|a, b| a.z.partial_cmp(&b.z).unwrap());
     }
 
     pub fn step(&mut self, delta: f32) {
