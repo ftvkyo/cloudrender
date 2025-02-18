@@ -70,7 +70,7 @@ impl AppBuffers {
         })
     }
 
-    pub fn update(&self, gl: &glow::Context, points: &Vec<Position>) -> Result<i32> {
+    pub fn update(&self, gl: &glow::Context, points: &[Position]) -> Result<i32> {
         let vertices = points.len() * 6;
 
         let mut positions: Vec<Position> = Vec::with_capacity(vertices);
@@ -206,6 +206,9 @@ impl App {
 
         let gl = unsafe { glow::Context::from_loader_function(gl_loader) };
 
+        unsafe { gl.enable(glow::BLEND) };
+        unsafe { gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA) };
+
         let event_pump = sdl.event_pump()?;
 
         let program = create_program(&gl)?;
@@ -276,7 +279,7 @@ impl App {
         Ok(())
     }
 
-    pub fn render_frame(&self, points: &Vec<Position>) -> Result<()> {
+    pub fn render_frame(&self, points: &[Position]) -> Result<()> {
         let vertices = self.buffers.update(&self.gl, points)?;
 
         unsafe { self.gl.clear(glow::COLOR_BUFFER_BIT) };

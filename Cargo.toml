@@ -7,4 +7,5 @@ edition = "2021"
 anyhow = "1.0.95"
 cgmath = "0.18.0"
 glow = { version = "0.16.0", default-features = false }
+rand = "0.9.0"
 sdl3 = { version = "0", features = [] }

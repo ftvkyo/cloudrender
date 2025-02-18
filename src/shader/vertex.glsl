@@ -12,5 +12,4 @@ out vec2 texcoord_frag;
 void main() {
     texcoord_frag = texcoord;
     gl_Position = projection * view * model * vec4(position, 1.0);
-    // gl_Position = model * vec4(position, 1.0);
 }

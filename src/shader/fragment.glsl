@@ -11,7 +11,8 @@ void main() {
 
     if (d < 1.0) {
         float brightness = cos(d * 3.1415 / 2);
-        color = vec4(vec3(brightness), 1.0);
+        float alpha = smoothstep(0.01, 1.0, brightness);
+        color = vec4(vec3(brightness), alpha);
     } else {
         color = vec4(0.0);
     }
