@@ -1,14 +1,12 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use cgmath::{Matrix4, Point2, Point3, SquareMatrix, Vector3};
+use cgmath::{Matrix4, Point3, SquareMatrix, Vector3};
 use cloud::Cloud;
-use rand::Rng;
 
 use crate::{app::App, camera::AppCamera};
 
 pub type Position = Point3<f32>;
-pub type TexCoord = Point2<f32>;
 pub type Direction = Vector3<f32>;
 
 pub mod app;

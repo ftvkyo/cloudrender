@@ -2,7 +2,7 @@ use anyhow::{bail, ensure, Context, Result};
 use cgmath::{Matrix, Matrix4};
 use glow::HasContext;
 
-use crate::{camera::AppCamera, Position, TexCoord};
+use crate::{camera::AppCamera, Position};
 
 const SHADER_VERTEX: &'_ str = include_str!("shader/vertex.glsl");
 const SHADER_FRAGMENT: &'_ str = include_str!("shader/fragment.glsl");
@@ -10,7 +10,7 @@ const SHADER_FRAGMENT: &'_ str = include_str!("shader/fragment.glsl");
 struct AppBuffers {
     pub va: glow::NativeVertexArray,
     pub positions: glow::NativeBuffer,
-    pub texcoords: glow::NativeBuffer,
+    pub elements: glow::NativeBuffer,
 }
 
 impl AppBuffers {
@@ -26,7 +26,6 @@ impl AppBuffers {
         };
 
         let position_attrib_index = get_attrib_location("position")?;
-        let texcoord_attrib_index = get_attrib_location("texcoord")?;
 
         // Vertex Array describes the data layout
         let vao = match unsafe { gl.create_vertex_array() } {
@@ -49,32 +48,45 @@ impl AppBuffers {
             )
         };
 
-        let texcoord_buffer = create_buffer()?;
-        unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(texcoord_buffer)) };
-        unsafe { gl.enable_vertex_attrib_array(texcoord_attrib_index) };
-        unsafe {
-            gl.vertex_attrib_pointer_f32(
-                texcoord_attrib_index,
-                (size_of::<TexCoord>() / size_of::<f32>()) as i32,
-                glow::FLOAT,
-                false,
-                size_of::<TexCoord>() as i32,
-                0, // Offset into the currently bound buffer
-            )
-        };
+        let element_array_buffer = create_buffer()?;
+        unsafe { gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(element_array_buffer)) };
 
         Ok(Self {
             va: vao,
             positions: position_buffer,
-            texcoords: texcoord_buffer,
+            elements: element_array_buffer,
         })
     }
 
-    pub fn update(&self, gl: &glow::Context, points: &[Position]) -> Result<i32> {
-        let vertices = points.len() * 6;
+    pub fn update_elements(&self, gl: &glow::Context, points: usize) -> Result<i32> {
+        let vertices = points * 6;
+
+        let mut elements: Vec<u32> = Vec::with_capacity(vertices);
+
+        for point in 0..points {
+            let p = point as u32 * 4;
+            elements.extend_from_slice(&[p, p + 1, p + 2, p + 2, p + 3, p]);
+        }
+
+        let elements_u8: &[u8] = unsafe {
+            ::core::slice::from_raw_parts(
+                elements.as_ptr() as *const u8,
+                size_of::<u32>() * vertices,
+            )
+        };
+
+        unsafe { gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.elements)) };
+        unsafe {
+            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, elements_u8, glow::DYNAMIC_DRAW)
+        };
+
+        Ok(vertices as i32)
+    }
+
+    pub fn update_positions(&self, gl: &glow::Context, points: &[Position]) {
+        let vertices = points.len() * 4;
 
         let mut positions: Vec<Position> = Vec::with_capacity(vertices);
-        let mut texcoords: Vec<TexCoord> = Vec::with_capacity(vertices);
 
         for point in points {
             let a = Position::new(point[0] - 0.1, point[1] - 0.1, point[2]);
@@ -82,16 +94,7 @@ impl AppBuffers {
             let c = Position::new(point[0] + 0.1, point[1] + 0.1, point[2]);
             let d = Position::new(point[0] - 0.1, point[1] + 0.1, point[2]);
 
-            positions.extend_from_slice(&[a, b, c, c, d, a]);
-
-            texcoords.extend_from_slice(&[
-                TexCoord::new(-1.0, -1.0),
-                TexCoord::new(1.0, -1.0),
-                TexCoord::new(1.0, 1.0),
-                TexCoord::new(1.0, 1.0),
-                TexCoord::new(-1.0, 1.0),
-                TexCoord::new(-1.0, -1.0),
-            ]);
+            positions.extend_from_slice(&[a, b, c, d]);
         }
 
         let positions_u8: &[u8] = unsafe {
@@ -103,18 +106,6 @@ impl AppBuffers {
 
         unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.positions)) };
         unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, positions_u8, glow::DYNAMIC_DRAW) };
-
-        let texcoords_u8: &[u8] = unsafe {
-            ::core::slice::from_raw_parts(
-                texcoords.as_ptr() as *const u8,
-                size_of::<TexCoord>() * vertices,
-            )
-        };
-
-        unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.texcoords)) };
-        unsafe { gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, texcoords_u8, glow::DYNAMIC_DRAW) };
-
-        Ok(vertices as i32)
     }
 }
 
@@ -282,10 +273,14 @@ impl App {
     }
 
     pub fn render_frame(&self, points: &[Position]) -> Result<()> {
-        let vertices = self.buffers.update(&self.gl, points)?;
+        let vertices = self.buffers.update_elements(&self.gl, points.len())?;
+        self.buffers.update_positions(&self.gl, points);
 
         unsafe { self.gl.clear(glow::COLOR_BUFFER_BIT) };
-        unsafe { self.gl.draw_arrays(glow::TRIANGLES, 0, vertices) };
+        unsafe {
+            self.gl
+                .draw_elements(glow::TRIANGLES, vertices, glow::UNSIGNED_INT, 0)
+        };
         self.window.gl_swap_window();
 
         Ok(())
@@ -295,7 +290,7 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe { self.gl.delete_buffer(self.buffers.positions) };
-        unsafe { self.gl.delete_buffer(self.buffers.texcoords) };
+        unsafe { self.gl.delete_buffer(self.buffers.elements) };
         unsafe { self.gl.delete_vertex_array(self.buffers.va) };
         unsafe { self.gl.delete_program(self.program) };
     }
