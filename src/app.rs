@@ -136,7 +136,9 @@ fn create_program(gl: &glow::Context) -> Result<glow::Program> {
         let success = unsafe { gl.get_shader_compile_status(shader) };
         if !success || cfg!(debug_assertions) {
             let log = unsafe { gl.get_shader_info_log(shader) };
-            println!("Shader '{}' info log:\n{}", shader_type, log);
+            if !log.is_empty() {
+                println!("Shader '{}' info log:\n{}", shader_type, log);
+            }
         }
         ensure!(success, "Failed to build the '{}' shader", shader_type);
 
