@@ -38,6 +38,16 @@ impl<const C: usize> Cloud<C> {
         self.sort();
     }
 
+    pub fn squeeze(&mut self, delta: f32) {
+        const SQUEEZE: f32 = 5.0;
+
+        let origin = Point3::origin();
+
+        for point in &mut self.points {
+            *point += (origin - *point) * delta * SQUEEZE;
+        }
+    }
+
     fn sort(&mut self) {
         self.points.sort_by(|a, b| a.z.partial_cmp(&b.z).unwrap());
     }

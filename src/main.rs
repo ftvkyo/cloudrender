@@ -21,9 +21,11 @@ pub fn main() -> Result<()> {
     let mut app = App::init(w, h)?;
 
     let frames_per_second = 60;
+    let frame_delta = 1.0 / frames_per_second as f32;
     let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
 
     let mut cloud = Cloud::<20>::new();
+    let mut squeezing = false;
 
     let camera = AppCamera::new(aspect);
     let model = Matrix4::<f32>::identity();
@@ -44,11 +46,25 @@ pub fn main() -> Result<()> {
                 }
 
                 if let Event::KeyDown {
-                    keycode: Some(Keycode::Space),
+                    keycode: Some(Keycode::P),
                     ..
                 } = event
                 {
                     cloud.poke();
+                }
+
+                if let Event::KeyDown {
+                    keycode: Some(Keycode::Space),
+                    ..
+                } = event {
+                    squeezing = true;
+                }
+
+                if let Event::KeyUp {
+                    keycode: Some(Keycode::Space),
+                    ..
+                } = event {
+                    squeezing = false;
                 }
             }
         }
@@ -64,7 +80,11 @@ pub fn main() -> Result<()> {
 
         ::std::thread::sleep(duration_to_sleep);
 
-        cloud.step(1.0 / frames_per_second as f32);
+        if squeezing {
+            cloud.squeeze(frame_delta);
+        }
+
+        cloud.step(frame_delta);
     }
 
     Ok(())
