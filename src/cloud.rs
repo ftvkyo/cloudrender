@@ -1,86 +1,116 @@
+use std::f32::consts::PI;
+
 use cgmath::{EuclideanSpace, InnerSpace, Point3, Vector3, Zero};
 use rand::Rng;
 
-use crate::Position;
+pub type Position = Point3<f32>;
+pub type Velocity = Vector3<f32>;
+pub type Acceleration = Vector3<f32>;
+pub type Force = Vector3<f32>;
 
-pub struct Cloud<const C: usize> {
-    pub points: [Position; C],
+#[derive(Clone)]
+pub struct Atom {
+    pub position: Position,
+    pub velocity: Velocity,
+    pub mass: f32,
+    pub charge: f32,
 }
 
-impl<const C: usize> Cloud<C> {
-    pub fn new() -> Self {
-        let mut rng = rand::rng();
+impl Atom {
+    /// Gravitational constant
+    const G: f32 = 5.0;
+    /// Permeability of the medium to EM force
+    #[allow(non_upper_case_globals)]
+    const μ: f32 = 55.0;
 
-        let mut points = [Position::origin(); C];
-
-        for point in &mut points {
-            point.x = rng.random_range(-1.0..=1.0);
-            point.y = rng.random_range(-1.0..=1.0);
-            point.z = rng.random_range(-1.0..=1.0);
-        }
-
-        let mut s = Self { points };
-
-        s.sort();
-
-        s
-    }
-
-    pub fn poke(&mut self) {
-        let mut rng = rand::rng();
-
-        let i = rng.random_range(0..self.points.len());
-
-        self.points[i].x = rng.random_range(-1.0..=1.0);
-        self.points[i].y = rng.random_range(-1.0..=1.0);
-        self.points[i].z = rng.random_range(-1.0..=1.0);
-
-        self.sort();
-    }
-
-    pub fn squeeze(&mut self, delta: f32) {
-        const SQUEEZE: f32 = 5.0;
-
-        let origin = Point3::origin();
-
-        for point in &mut self.points {
-            *point += (origin - *point) * delta * SQUEEZE;
+    pub fn new(position: Position) -> Self {
+        Self {
+            position,
+            velocity: Velocity::zero(),
+            mass: 1.0,
+            charge: 1.0,
         }
     }
 
-    fn sort(&mut self) {
-        self.points.sort_by(|a, b| a.z.partial_cmp(&b.z).unwrap());
+    pub fn step(&mut self, force: Force, delta: f32) {
+        self.velocity += delta * force / self.mass;
+        self.position += delta * self.velocity;
+    }
+
+    pub fn find_gravity(&self, other: &Atom) -> Force {
+        // By default, attract.
+        let dir = other.position - self.position;
+        let factor = Self::G * self.mass * other.mass / dir.magnitude2();
+        return dir * factor;
+    }
+
+    pub fn find_magnetism(&self, other: &Atom) -> Force {
+        // By default, repel.
+        // If charges have opposing signs, this will turn into attraction.
+        let dir = self.position - other.position;
+        let factor = Self::μ * self.charge * other.charge / 4.0 / PI / dir.magnitude2();
+        return dir * factor;
+    }
+}
+
+pub struct Cloud {
+    atoms: Vec<Atom>,
+}
+
+impl Cloud {
+    pub fn new(count: usize) -> Self {
+        let mut rng = rand::rng();
+
+        let mut atoms = Vec::with_capacity(count);
+
+        for _ in 0..count {
+            let pos = Position::new(
+                rng.random_range(-1.0..=1.0),
+                rng.random_range(-1.0..=1.0),
+                rng.random_range(-1.0..=1.0),
+            );
+            atoms.push(Atom::new(pos));
+        }
+
+        Self { atoms }
     }
 
     pub fn step(&mut self, delta: f32) {
         const RECENTER: f32 = 1.0;
-        const INTERACTION: f32 = 0.1;
 
-        let origin = Point3::origin();
-
+        // 1. Nudge the center of mass towards the origin
         let mut center_of_mass = Vector3::zero();
-        for point in self.points {
-            center_of_mass += origin - point;
+        for atom in &self.atoms {
+            center_of_mass -= atom.position.to_vec() * atom.mass;
+        }
+        for atom in &mut self.atoms {
+            atom.position += center_of_mass * delta * RECENTER;
         }
 
-        let mut points_after = self.points.clone();
+        let atoms_tmp = self.atoms.clone();
 
-        for (p, point) in points_after.iter_mut().enumerate() {
-            let mut shift = center_of_mass * delta * RECENTER;
-
-            for (o, other) in self.points.iter().enumerate() {
-                if p == o {
+        // 2. Apply forces
+        for (a, atom) in self.atoms.iter_mut().enumerate() {
+            let mut force = Force::zero();
+            for (o, other) in atoms_tmp.iter().enumerate() {
+                if a == o {
                     continue;
                 }
-
-                let interaction_vector = other - *point;
-                let interaction_force = interaction_vector.magnitude().log2();
-                shift += interaction_vector.normalize() * interaction_force * delta * INTERACTION;
+                force += atom.find_gravity(other);
+                force += atom.find_magnetism(other);
             }
-
-            *point += shift;
+            atom.step(force, delta);
         }
 
-        self.points = points_after;
+        self.sort();
+    }
+
+    fn sort(&mut self) {
+        let s = |a: &Atom, b: &Atom| a.position.z.total_cmp(&b.position.z);
+        self.atoms.sort_by(s);
+    }
+
+    pub fn positions(&self) -> Vec<Position> {
+        self.atoms.iter().map(|a| a.position).collect()
     }
 }

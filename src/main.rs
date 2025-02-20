@@ -24,8 +24,7 @@ pub fn main() -> Result<()> {
     let frame_delta = 1.0 / frames_per_second as f32;
     let frame_duration = Duration::new(0, 1_000_000_000u32 / frames_per_second);
 
-    let mut cloud = Cloud::<20>::new();
-    let mut squeezing = false;
+    let mut cloud = Cloud::new(20);
 
     let camera = AppCamera::new(aspect);
     let model = Matrix4::<f32>::identity();
@@ -44,45 +43,19 @@ pub fn main() -> Result<()> {
                 {
                     break 'quit;
                 }
-
-                if let Event::KeyDown {
-                    keycode: Some(Keycode::P),
-                    ..
-                } = event
-                {
-                    cloud.poke();
-                }
-
-                if let Event::KeyDown {
-                    keycode: Some(Keycode::Space),
-                    ..
-                } = event {
-                    squeezing = true;
-                }
-
-                if let Event::KeyUp {
-                    keycode: Some(Keycode::Space),
-                    ..
-                } = event {
-                    squeezing = false;
-                }
             }
         }
 
         let instant_start = Instant::now();
 
         app.update_uniforms(&model, &camera)?;
-        app.render_frame(&cloud.points)?;
+        app.render_frame(&cloud.positions())?;
 
         let instant_end = Instant::now();
         let duration_rendering = instant_end - instant_start;
         let duration_to_sleep = frame_duration.saturating_sub(duration_rendering);
 
         ::std::thread::sleep(duration_to_sleep);
-
-        if squeezing {
-            cloud.squeeze(frame_delta);
-        }
 
         cloud.step(frame_delta);
     }
